@@ -38,10 +38,10 @@ pipeline {
         stage("ECR Push") {
             steps {
                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws_ecr_id', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-               sh 'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 656153966803.dkr.ecr.us-east-1.amazonaws.com'
+               sh 'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin account_no(AWS).dkr.ecr.us-east-1.amazonaws.com'
                sh 'docker build -t jenkins-ecr-repo .'
-               sh 'docker tag jenkins-ecr-repo:latest 656153966803.dkr.ecr.us-east-1.amazonaws.com/jenkins-ecr-repo:latest'
-               sh 'docker push 656153966803.dkr.ecr.us-east-1.amazonaws.com/jenkins-ecr-repo:latest'
+               sh 'docker tag jenkins-ecr-repo:latest account_no(AWS)..dkr.ecr.us-east-1.amazonaws.com/jenkins-ecr-repo:latest'
+               sh 'docker push account_no(AWS)..dkr.ecr.us-east-1.amazonaws.com/jenkins-ecr-repo:latest'
                }
               
             }
