@@ -1,0 +1,105 @@
+pipeline {
+    agent any
+    parameters {
+        choice(name: 'Branch', choices:["main", "master", "another_branch"], description: "")
+    }
+    stages {
+        stage('Clean Workspace'){
+            steps {
+                cleanWs()
+            }
+        }
+        stage('git clone') {
+            steps {
+                git branch: '${Branch}', url: 'https://github.com/DeepakBoora/Dockerfile_repo.git'
+            }
+        }
+        
+        stage('Docker Build'){
+            steps{
+                sh '''
+                pwd
+                docker build -t nginx:latest .
+                docker tag nginx:latest deepakboora/alpine_nginx_image
+                '''
+            }
+        }
+        
+        stage('Docker Push'){
+            steps{
+                withCredentials([usernamePassword(credentialsId: 'docker_hub', usernameVariable: 'USERNAME', passwordVariable: 'PASSWORD')]){
+                sh 'docker login -u $USERNAME -p $PASSWORD docker.io'
+                sh 'docker push deepakboora/alpine_nginx_image'
+                
+                }
+            }
+        }
+        
+        stage("ECR Push") {
+            steps {
+               withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws_ecr_id', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+               sh 'aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 656153966803.dkr.ecr.us-east-1.amazonaws.com'
+               sh 'docker build -t jenkins-ecr-repo .'
+               sh 'docker tag jenkins-ecr-repo:latest 656153966803.dkr.ecr.us-east-1.amazonaws.com/jenkins-ecr-repo:latest'
+               sh 'docker push 656153966803.dkr.ecr.us-east-1.amazonaws.com/jenkins-ecr-repo:latest'
+               }
+              
+            }
+        }
+        
+        stage('Create Task Definition') {
+            environment {
+    AWS_DEFAULT_REGION = 'us-east-1'
+  }
+           steps {
+            withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws_ecr_id', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+           script {
+              def taskDefinition = """
+               {
+                  "family": "my-task-definition",
+                   "networkMode": "bridge",
+                   "containerDefinitions": [
+                     {
+                       "name": "jenkins-container",
+                       "image": "jenkins-ecr-repo/jenkins-ecr-repo:latest",
+                       "memory": 512,
+                       "cpu": 256,
+                       "essential": true,
+                        "portMappings": [
+                        {
+                           "containerPort": 80,
+                           "hostPort": 80,
+                           "protocol": "tcp"
+                        }
+                       ],
+                       "environment": [
+                        {
+                          "name": "MY_ENV_VAR",
+                          "value": "my-value"
+                        }
+                       ]
+                    }
+                   ]
+                }
+              """
+          
+             def response = sh(script: "aws ecs register-task-definition --cli-input-json '${taskDefinition}'")
+            
+            }
+           }
+           }
+        }
+        
+        stage('Create ECS cluster') {
+            environment {
+              AWS_DEFAULT_REGION = 'us-east-1'
+            }
+            steps {
+                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws_ecr_id', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                    sh 'aws ecs create-cluster --cluster-name my-cluster'
+                }
+            }
+    
+        }
+   }
+ }
